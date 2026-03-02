@@ -16,7 +16,7 @@ prompts = [
 name = "alfresco_resolve"
 description = "Resolve target file/folder to ranked candidate node IDs with confidence and disambiguation hints"
 kind = "shell"
-command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go resolve --operation {operation} --kind {kind} --name {name} --extension {extension} --site-id {site_id} --root-node-id {root_node_id} --max-depth {max_depth} --expected-parent-path {expected_parent_path} --expected-site-id {expected_site_id} --ancestor-names {ancestor_names} --query-text {query_text} --modified-within-days {modified_within_days} --max-candidates {max_candidates} --require-unique {require_unique}"
+command = "./bin/alfresco-agent resolve --operation {operation} --kind {kind} --name {name} --extension {extension} --site-id {site_id} --root-node-id {root_node_id} --max-depth {max_depth} --expected-parent-path {expected_parent_path} --expected-site-id {expected_site_id} --ancestor-names {ancestor_names} --query-text {query_text} --modified-within-days {modified_within_days} --max-candidates {max_candidates} --require-unique {require_unique}"
 
 [tools.args]
 operation = "Resolve mode (locate_for_upload, locate_for_update, locate_for_create)"
@@ -38,7 +38,7 @@ require_unique = "true/false: require unique high-confidence winner"
 name = "alfresco_plan"
 description = "Build a dry-run execution plan from a selected node and action"
 kind = "shell"
-command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go plan --resolve-request-id {resolve_request_id} --action {action} --target-node-id {target_node_id} --target-parent-node-id {target_parent_node_id} --local-file-path {local_file_path} --new-name {new_name} --properties-json {properties_json} --dry-run {dry_run} --require-preconditions {require_preconditions} --expected-modified-at {expected_modified_at} --expected-checksum {expected_checksum}"
+command = "./bin/alfresco-agent plan --resolve-request-id {resolve_request_id} --action {action} --target-node-id {target_node_id} --target-parent-node-id {target_parent_node_id} --local-file-path {local_file_path} --new-name {new_name} --properties-json {properties_json} --dry-run {dry_run} --require-preconditions {require_preconditions} --expected-modified-at {expected_modified_at} --expected-checksum {expected_checksum}"
 
 [tools.args]
 resolve_request_id = "Resolve request identifier"
@@ -57,7 +57,7 @@ expected_checksum = "Expected checksum"
 name = "alfresco_apply"
 description = "Execute a previously generated approved plan with idempotency protection"
 kind = "shell"
-command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go apply --plan-id {plan_id} --plan-hash {plan_hash} --idempotency-key {idempotency_key} --approved {approved} --http-timeout {http_timeout} --http-retries {http_retries} --http-retry-wait {http_retry_wait}"
+command = "./bin/alfresco-agent apply --plan-id {plan_id} --plan-hash {plan_hash} --idempotency-key {idempotency_key} --approved {approved} --http-timeout {http_timeout} --http-retries {http_retries} --http-retry-wait {http_retry_wait}"
 
 [tools.args]
 plan_id = "Plan identifier"

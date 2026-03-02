@@ -1,0 +1,504 @@
+openapi: 3.0.3
+info:
+  title: Alfresco Agent Gateway API
+  version: 1.0.0
+  description: |
+    Hardened API layer in front of alfresco-go-cli for Microsoft 365 Agents SDK integration.
+    Enforces strict schema validation, deterministic resolve checks, approval gating for apply,
+    and auditable idempotent execution.
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+tags:
+  - name: Resolve
+  - name: Plan
+  - name: Apply
+  - name: Approvals
+  - name: Audit
+  - name: Operations
+paths:
+  /v1/resolve:
+    post:
+      tags: [Resolve]
+      summary: Resolve target location in Alfresco with deterministic checks
+      operationId: resolveTarget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+      responses:
+        '200':
+          description: Resolve response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/plan:
+    post:
+      tags: [Plan]
+      summary: Build dry-run plan from selected resolve candidate
+      operationId: buildPlan
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRequest'
+      responses:
+        '200':
+          description: Plan response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/apply:
+    post:
+      tags: [Apply]
+      summary: Request apply execution (approval gated)
+      operationId: requestApply
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyRequest'
+      responses:
+        '202':
+          description: Approval required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResponse'
+        '200':
+          description: Executed immediately (if policy permits)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/approvals/{approval_id}/decision:
+    post:
+      tags: [Approvals]
+      summary: Approve or reject pending apply request
+      operationId: decideApproval
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Approval decision accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/operations/{operation_id}:
+    get:
+      tags: [Operations]
+      summary: Get operation status and result
+      operationId: getOperation
+      parameters:
+        - name: operation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Operation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationStatusResponse'
+        '404':
+          description: Operation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/audit/{trace_id}:
+    get:
+      tags: [Audit]
+      summary: Get audit events by trace id
+      operationId: getAuditByTrace
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+
+  schemas:
+    ResolveRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, operation, target, scope, policy]
+      properties:
+        schema_version:
+          type: string
+          enum: ["1.0"]
+        operation:
+          type: string
+          enum: [locate_for_update, locate_for_upload, locate_for_create]
+        scope:
+          type: object
+          additionalProperties: false
+          required: [site_id, root_node_id, max_depth]
+          properties:
+            site_id: { type: string, minLength: 1 }
+            root_node_id: { type: string, format: uuid }
+            max_depth: { type: integer, minimum: 1, maximum: 10 }
+        target:
+          type: object
+          additionalProperties: false
+          required: [kind, name]
+          properties:
+            kind: { type: string, enum: [file, folder] }
+            name: { type: string, minLength: 1 }
+            extension: { type: string }
+            expected_parent_path: { type: string }
+            expected_site_id: { type: string }
+            ancestor_names:
+              type: array
+              items: { type: string }
+            query_text: { type: string }
+            modified_within_days: { type: integer, minimum: 0 }
+        policy:
+          type: object
+          additionalProperties: false
+          required: [max_candidates, require_unique]
+          properties:
+            max_candidates: { type: integer, minimum: 1, maximum: 20 }
+            require_unique: { type: boolean }
+
+    ResolveResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request_id, status, candidates, confidence, next_action]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        request_id: { type: string }
+        status:
+          type: string
+          enum: [resolved, ambiguous, not_found, out_of_scope]
+        best_candidate_node_id:
+          type: string
+          format: uuid
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolveCandidate'
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        next_action: { type: string }
+        questions:
+          type: array
+          items: { type: string }
+
+    ResolveCandidate:
+      type: object
+      additionalProperties: false
+      required: [node_id, site_id, full_path, kind, score]
+      properties:
+        node_id: { type: string, format: uuid }
+        site_id: { type: string }
+        full_path: { type: string }
+        kind: { type: string, enum: [file, folder] }
+        score: { type: number, minimum: 0 }
+
+    Confidence:
+      type: object
+      additionalProperties: false
+      required: [top_score, second_score, delta, band]
+      properties:
+        top_score: { type: number }
+        second_score: { type: number }
+        delta: { type: number }
+        band: { type: string, enum: [high, medium, low] }
+
+    PlanRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, resolve_request_id, action, selection, payload, safety]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        resolve_request_id: { type: string }
+        action:
+          type: string
+          enum: [upload_new_version, update_metadata, create_child]
+        selection:
+          type: object
+          additionalProperties: false
+          properties:
+            target_node_id: { type: string, format: uuid }
+            target_parent_node_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          properties:
+            local_file_path: { type: string }
+            new_name: { type: string }
+            properties:
+              type: object
+              additionalProperties:
+                type: string
+        safety:
+          type: object
+          additionalProperties: false
+          required: [dry_run, require_preconditions]
+          properties:
+            dry_run: { type: boolean }
+            require_preconditions: { type: boolean }
+            expected_modified_at: { type: string }
+            expected_checksum: { type: string }
+
+    PlanResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request_id, plan_id, plan_hash, status, operations, approval_required]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        request_id: { type: string }
+        plan_id: { type: string, format: uuid }
+        plan_hash: { type: string }
+        status: { type: string, enum: [planned, rejected] }
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanOperation'
+        preconditions:
+          type: array
+          items: { type: string }
+        postconditions:
+          type: array
+          items: { type: string }
+        approval_required: { type: boolean }
+
+    PlanOperation:
+      type: object
+      additionalProperties: false
+      required: [op_id, description, cli_command]
+      properties:
+        op_id: { type: string }
+        description: { type: string }
+        cli_command: { type: string }
+
+    ApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, plan_id, plan_hash]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        plan_id: { type: string, format: uuid }
+        plan_hash: { type: string }
+        idempotency_key: { type: string }
+        approved: { type: boolean }
+        runtime:
+          type: object
+          additionalProperties: false
+          properties:
+            http_timeout: { type: string }
+            http_retries: { type: integer, minimum: 0, maximum: 10 }
+            http_retry_wait: { type: string }
+
+    ApplyResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request_id, execution_id, status]
+      properties:
+        schema_version: { type: string, enum: ["1.0"] }
+        request_id: { type: string }
+        execution_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending_approval, approved, rejected, executing, succeeded, failed]
+        approval_id: { type: string, format: uuid }
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplyResult'
+        error: { type: string }
+
+    ApplyResult:
+      type: object
+      additionalProperties: false
+      required: [op_id, exit_code, stdout, stderr]
+      properties:
+        op_id: { type: string }
+        exit_code: { type: integer }
+        stdout: { type: string }
+        stderr: { type: string }
+
+    ApprovalDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        reason:
+          type: string
+
+    ApprovalDecisionResponse:
+      type: object
+      additionalProperties: false
+      required: [approval_id, status]
+      properties:
+        approval_id: { type: string, format: uuid }
+        status: { type: string, enum: [approved, rejected] }
+        decided_by: { type: string }
+        decided_at: { type: string, format: date-time }
+
+    OperationStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [operation_id, status, trace_id]
+      properties:
+        operation_id: { type: string, format: uuid }
+        status: { type: string }
+        trace_id: { type: string }
+        result:
+          type: object
+          additionalProperties: true
+
+    AuditEventsResponse:
+      type: object
+      additionalProperties: false
+      required: [trace_id, events]
+      properties:
+        trace_id: { type: string }
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+
+    AuditEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, trace_id, event_type, occurred_at, actor]
+      properties:
+        event_id: { type: string, format: uuid }
+        trace_id: { type: string }
+        event_type: { type: string }
+        occurred_at: { type: string, format: date-time }
+        actor: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, trace_id]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        trace_id: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              field: { type: string }
+              message: { type: string }
