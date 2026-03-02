@@ -1172,6 +1172,7 @@ func skillRoot() string {
 }
 
 func runAlfresco(args []string) (string, string, int, error) {
+	args = withCredentials(args)
 	cmd := exec.Command(alfrescoBinary(), args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -1188,6 +1189,33 @@ func runAlfresco(args []string) (string, string, int, error) {
 		}
 	}
 	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), exitCode, err
+}
+
+func withCredentials(args []string) []string {
+	username := strings.TrimSpace(os.Getenv("ALFRESCO_USERNAME"))
+	password := strings.TrimSpace(os.Getenv("ALFRESCO_PASSWORD"))
+	if username == "" || password == "" {
+		return args
+	}
+
+	hasUsername := false
+	hasPassword := false
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--username" {
+			hasUsername = true
+		}
+		if args[i] == "--password" {
+			hasPassword = true
+		}
+	}
+	if hasUsername || hasPassword {
+		return args
+	}
+
+	withAuth := make([]string, 0, len(args)+4)
+	withAuth = append(withAuth, args...)
+	withAuth = append(withAuth, "--username", username, "--password", password)
+	return withAuth
 }
 
 func alfrescoBinary() string {
