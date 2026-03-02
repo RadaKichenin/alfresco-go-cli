@@ -53,7 +53,7 @@ func main() {
 	mux.HandleFunc("/v1/resolve", s.handleResolve)
 	mux.HandleFunc("/v1/plan", s.handlePlan)
 	mux.HandleFunc("/v1/apply", s.handleApply)
-	mux.HandleFunc("/v1/approvals/", s.handleApprovalDecision)
+	mux.HandleFunc("/v1/approvals/", s.handleApprovals)
 	mux.HandleFunc("/v1/operations/", s.handleGetOperation)
 	mux.HandleFunc("/v1/audit/", s.handleGetAudit)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -211,16 +211,28 @@ func (s *server) handleApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, resp)
 }
 
-func (s *server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only POST is supported", traceIDFromContext(r.Context()), nil)
-		return
-	}
+func (s *server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 	traceID := traceIDFromContext(r.Context())
 	path := strings.TrimPrefix(r.URL.Path, "/v1/approvals/")
+	path = strings.TrimSuffix(path, "/")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "invalid_path", "approval_id is required", traceID, nil)
+		return
+	}
+	if r.Method == http.MethodGet {
+		if strings.Contains(path, "/") {
+			writeError(w, http.StatusBadRequest, "invalid_path", "use GET /v1/approvals/{approval_id}", traceID, nil)
+			return
+		}
+		s.handleGetApproval(w, r, path)
+		return
+	}
+	if r.Method != http.MethodPost || !strings.HasSuffix(path, "/decision") {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET /v1/approvals/{approval_id} or POST /v1/approvals/{approval_id}/decision", traceID, nil)
+		return
+	}
 	approvalID := strings.TrimSuffix(path, "/decision")
-	approvalID = strings.TrimSuffix(approvalID, "/")
-	if approvalID == "" || approvalID == path {
+	if approvalID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_path", "approval_id is required", traceID, nil)
 		return
 	}
@@ -253,6 +265,31 @@ func (s *server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) 
 		Status:     rec.Status,
 		DecidedBy:  rec.DecidedBy,
 		DecidedAt:  rec.DecidedAt,
+	})
+}
+
+func (s *server) handleGetApproval(w http.ResponseWriter, r *http.Request, approvalID string) {
+	rec, ok, err := s.state.GetApproval(approvalID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed", err.Error(), traceIDFromContext(r.Context()), nil)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "approval_not_found", "approval not found", traceIDFromContext(r.Context()), nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, validation.ApprovalStatusResponse{
+		ApprovalID:  rec.ApprovalID,
+		OperationID: rec.OperationID,
+		TraceID:     rec.TraceID,
+		PlanID:      rec.PlanID,
+		PlanHash:    rec.PlanHash,
+		Status:      rec.Status,
+		RequestedBy: rec.RequestedBy,
+		RequestedAt: rec.RequestedAt,
+		DecidedBy:   rec.DecidedBy,
+		DecidedAt:   rec.DecidedAt,
+		Reason:      rec.DecisionNote,
 	})
 }
 

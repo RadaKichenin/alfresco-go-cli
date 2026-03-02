@@ -165,6 +165,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/approvals/{approval_id}:
+    get:
+      tags: [Approvals]
+      summary: Get approval status
+      operationId: getApproval
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Approval status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalStatusResponse'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v1/operations/{operation_id}:
     get:
       tags: [Operations]
@@ -448,6 +474,23 @@ components:
         status: { type: string, enum: [approved, rejected] }
         decided_by: { type: string }
         decided_at: { type: string, format: date-time }
+
+    ApprovalStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [approval_id, operation_id, trace_id, plan_id, plan_hash, status, requested_by, requested_at]
+      properties:
+        approval_id: { type: string, format: uuid }
+        operation_id: { type: string, format: uuid }
+        trace_id: { type: string }
+        plan_id: { type: string }
+        plan_hash: { type: string }
+        status: { type: string, enum: [pending, approved, rejected] }
+        requested_by: { type: string }
+        requested_at: { type: string, format: date-time }
+        decided_by: { type: string }
+        decided_at: { type: string, format: date-time }
+        reason: { type: string }
 
     OperationStatusResponse:
       type: object

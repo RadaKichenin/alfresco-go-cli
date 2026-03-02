@@ -147,6 +147,20 @@ type ApprovalDecisionResponse struct {
 	DecidedAt  time.Time `json:"decided_at"`
 }
 
+type ApprovalStatusResponse struct {
+	ApprovalID  string    `json:"approval_id"`
+	OperationID string    `json:"operation_id"`
+	TraceID     string    `json:"trace_id"`
+	PlanID      string    `json:"plan_id"`
+	PlanHash    string    `json:"plan_hash"`
+	Status      string    `json:"status"`
+	RequestedBy string    `json:"requested_by"`
+	RequestedAt time.Time `json:"requested_at"`
+	DecidedBy   string    `json:"decided_by,omitempty"`
+	DecidedAt   time.Time `json:"decided_at,omitempty"`
+	Reason      string    `json:"reason,omitempty"`
+}
+
 type OperationStatusResponse struct {
 	OperationID string `json:"operation_id"`
 	Status      string `json:"status"`
