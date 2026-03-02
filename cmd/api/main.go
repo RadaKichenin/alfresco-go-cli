@@ -249,6 +249,7 @@ func (s *server) executeApprovedApply(ctx context.Context, approvalID string) er
 	if !ok {
 		return errors.New("pending apply not found")
 	}
+	pending.Req.Approved = true
 
 	resp, err := s.exec.Apply(ctx, pending.Req)
 	if err != nil {

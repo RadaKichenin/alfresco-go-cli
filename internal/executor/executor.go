@@ -1,11 +1,14 @@
 package executor
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"time"
+	"os/exec"
+	"strconv"
+	"strings"
 
 	"github.com/aborroy/alfresco-cli/internal/validation"
 )
@@ -25,90 +28,137 @@ func NewCLIExecutor(agentBin string) *CLIExecutor {
 }
 
 func (e *CLIExecutor) Resolve(_ context.Context, req validation.ResolveRequest) (validation.ResolveResponse, error) {
-	// Placeholder implementation. Replace with real subprocess invocation of:
-	// <alfresco-agent-bin> resolve --request-json ...
-	resp := validation.ResolveResponse{
-		SchemaVersion: validation.SchemaVersion,
-		RequestID:     "resolve-" + newID(),
-		Status:        "not_found",
-		Candidates:    []validation.ResolveCandidate{},
-		Confidence: validation.Confidence{
-			TopScore: 0, SecondScore: 0, Delta: 0, Band: "low",
-		},
-		NextAction: "refine_constraints",
-		Questions:  []string{"No candidates found. Add expected_parent_path or ancestor_names."},
+	args := []string{
+		"resolve",
+		"--operation", req.Operation,
+		"--kind", req.Target.Kind,
+		"--name", req.Target.Name,
+		"--site-id", req.Scope.SiteID,
+		"--root-node-id", req.Scope.RootNodeID,
+		"--max-depth", strconv.Itoa(req.Scope.MaxDepth),
+		"--expected-site-id", fallback(req.Target.ExpectedSiteID, req.Scope.SiteID),
+		"--query-text", req.Target.QueryText,
+		"--modified-within-days", strconv.Itoa(req.Target.ModifiedWithinDays),
+		"--max-candidates", strconv.Itoa(req.Policy.MaxCandidates),
+		"--require-unique", strconv.FormatBool(req.Policy.RequireUnique),
 	}
-	if req.Target.ExpectedSiteID != "" && req.Target.ExpectedSiteID != req.Scope.SiteID {
-		resp.Status = "out_of_scope"
-		resp.NextAction = "fix_scope"
-		resp.Questions = []string{"expected_site_id does not match scope.site_id"}
+	if req.Target.Extension != "" {
+		args = append(args, "--extension", req.Target.Extension)
+	}
+	if req.Target.ExpectedParentPath != "" {
+		args = append(args, "--expected-parent-path", req.Target.ExpectedParentPath)
+	}
+	if len(req.Target.AncestorNames) > 0 {
+		args = append(args, "--ancestor-names", strings.Join(req.Target.AncestorNames, ","))
+	}
+
+	stdout, stderr, err := e.run(args...)
+	if err != nil {
+		return validation.ResolveResponse{}, fmt.Errorf("resolve command failed: %w; stderr=%s", err, stderr)
+	}
+	var resp validation.ResolveResponse
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		return validation.ResolveResponse{}, fmt.Errorf("failed to parse resolve JSON: %w; stdout=%s", err, stdout)
 	}
 	return resp, nil
 }
 
 func (e *CLIExecutor) Plan(_ context.Context, req validation.PlanRequest) (validation.PlanResponse, error) {
-	return validation.PlanResponse{
-		SchemaVersion:    validation.SchemaVersion,
-		RequestID:        "plan-" + newID(),
-		PlanID:           newUUIDLike(),
-		PlanHash:         fmt.Sprintf("sha256:%s", newID()),
-		Status:           "planned",
-		ApprovalRequired: true,
-		Operations: []validation.PlanOperation{
-			{
-				OpID:        "op-1",
-				Description: "Execute action through alfresco-go-cli",
-				CLICommand:  buildPlannedCommand(req),
-			},
-		},
-		Preconditions: []string{"Resolve status must be resolved"},
-		Postconditions: []string{
-			"Target node state matches expected operation",
-		},
-	}, nil
-}
-
-func (e *CLIExecutor) Apply(_ context.Context, _ validation.ApplyRequest) (validation.ApplyResponse, error) {
-	return validation.ApplyResponse{
-		SchemaVersion: validation.SchemaVersion,
-		RequestID:     "apply-" + newID(),
-		ExecutionID:   newUUIDLike(),
-		Status:        "succeeded",
-		Results: []validation.ApplyResult{
-			{OpID: "op-1", ExitCode: 0, Stdout: "stub execution complete", Stderr: ""},
-		},
-	}, nil
-}
-
-func buildPlannedCommand(req validation.PlanRequest) string {
-	switch req.Action {
-	case "upload_new_version":
-		return "alfresco node update -i <target_node_id> -f <local_file_path> -o json"
-	case "update_metadata":
-		return "alfresco node update -i <target_node_id> -p key=value -o json"
-	case "create_child":
-		return "alfresco node create -i <target_parent_node_id> -n <new_name> -f <local_file_path> -o json"
-	default:
-		return "alfresco <unsupported-action>"
+	args := []string{
+		"plan",
+		"--resolve-request-id", req.ResolveRequestID,
+		"--action", req.Action,
+		"--dry-run", strconv.FormatBool(req.Safety.DryRun),
+		"--require-preconditions", strconv.FormatBool(req.Safety.RequirePreconditions),
 	}
+	if req.Selection.TargetNodeID != "" {
+		args = append(args, "--target-node-id", req.Selection.TargetNodeID)
+	}
+	if req.Selection.TargetParentNodeID != "" {
+		args = append(args, "--target-parent-node-id", req.Selection.TargetParentNodeID)
+	}
+	if req.Payload.LocalFilePath != "" {
+		args = append(args, "--local-file-path", req.Payload.LocalFilePath)
+	}
+	if req.Payload.NewName != "" {
+		args = append(args, "--new-name", req.Payload.NewName)
+	}
+	if len(req.Payload.Properties) > 0 {
+		raw, _ := json.Marshal(req.Payload.Properties)
+		args = append(args, "--properties-json", string(raw))
+	}
+	if req.Safety.ExpectedModifiedAt != "" {
+		args = append(args, "--expected-modified-at", req.Safety.ExpectedModifiedAt)
+	}
+	if req.Safety.ExpectedChecksum != "" {
+		args = append(args, "--expected-checksum", req.Safety.ExpectedChecksum)
+	}
+
+	stdout, stderr, err := e.run(args...)
+	if err != nil {
+		return validation.PlanResponse{}, fmt.Errorf("plan command failed: %w; stderr=%s", err, stderr)
+	}
+	var resp validation.PlanResponse
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		return validation.PlanResponse{}, fmt.Errorf("failed to parse plan JSON: %w; stdout=%s", err, stdout)
+	}
+	if resp.Status == "ready" || resp.Status == "needs_confirmation" {
+		resp.Status = "planned"
+	}
+	return resp, nil
 }
 
-func newID() string {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
+func (e *CLIExecutor) Apply(_ context.Context, req validation.ApplyRequest) (validation.ApplyResponse, error) {
+	args := []string{
+		"apply",
+		"--plan-id", req.PlanID,
+		"--plan-hash", req.PlanHash,
+		"--approved", strconv.FormatBool(req.Approved),
 	}
-	return hex.EncodeToString(buf)
+	if req.IdempotencyKey != "" {
+		args = append(args, "--idempotency-key", req.IdempotencyKey)
+	}
+	if req.Runtime.HTTPTimeout != "" {
+		args = append(args, "--http-timeout", req.Runtime.HTTPTimeout)
+	}
+	if req.Runtime.HTTPRetries >= 0 {
+		args = append(args, "--http-retries", strconv.Itoa(req.Runtime.HTTPRetries))
+	}
+	if req.Runtime.HTTPRetryWait != "" {
+		args = append(args, "--http-retry-wait", req.Runtime.HTTPRetryWait)
+	}
+
+	stdout, stderr, err := e.run(args...)
+	if err != nil {
+		return validation.ApplyResponse{}, fmt.Errorf("apply command failed: %w; stderr=%s", err, stderr)
+	}
+	var resp validation.ApplyResponse
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		return validation.ApplyResponse{}, fmt.Errorf("failed to parse apply JSON: %w; stdout=%s", err, stdout)
+	}
+	return resp, nil
 }
 
-func newUUIDLike() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("00000000-0000-0000-0000-%012d", time.Now().Unix()%1000000000000)
+func (e *CLIExecutor) run(args ...string) (string, string, error) {
+	cmd := exec.Command(e.AlfrescoAgentBin, args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), fmt.Errorf("exit code %d", exitErr.ExitCode())
+		}
+		return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
 	}
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16],
-	)
+	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
+}
+
+func fallback(v, d string) string {
+	if strings.TrimSpace(v) == "" {
+		return d
+	}
+	return v
 }

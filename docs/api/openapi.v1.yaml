@@ -358,7 +358,7 @@ components:
       properties:
         schema_version: { type: string, enum: ["1.0"] }
         request_id: { type: string }
-        plan_id: { type: string, format: uuid }
+        plan_id: { type: string }
         plan_hash: { type: string }
         status: { type: string, enum: [planned, rejected] }
         operations:
@@ -388,7 +388,7 @@ components:
       required: [schema_version, plan_id, plan_hash]
       properties:
         schema_version: { type: string, enum: ["1.0"] }
-        plan_id: { type: string, format: uuid }
+        plan_id: { type: string }
         plan_hash: { type: string }
         idempotency_key: { type: string }
         approved: { type: boolean }

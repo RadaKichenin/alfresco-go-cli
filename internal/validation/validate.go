@@ -67,8 +67,8 @@ func ValidateApplyRequest(r ApplyRequest) []ErrorDetail {
 	if r.SchemaVersion != SchemaVersion {
 		errs = append(errs, ErrorDetail{Field: "schema_version", Message: "must be 1.0"})
 	}
-	if !isUUID(r.PlanID) {
-		errs = append(errs, ErrorDetail{Field: "plan_id", Message: "must be UUID"})
+	if strings.TrimSpace(r.PlanID) == "" {
+		errs = append(errs, ErrorDetail{Field: "plan_id", Message: "is required"})
 	}
 	if strings.TrimSpace(r.PlanHash) == "" {
 		errs = append(errs, ErrorDetail{Field: "plan_hash", Message: "is required"})
