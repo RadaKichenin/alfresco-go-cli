@@ -1,0 +1,20 @@
+{
+  "plan_response": {
+    "schema_version": "1.0",
+    "request_id": "plan-1772441300-3255",
+    "plan_id": "plan-1772441300-7611",
+    "plan_hash": "6df7f96f5b761bdad3f9248aeaab5fd70198271f12948a400a0768f29e4de886",
+    "status": "needs_confirmation",
+    "operations": [
+      {
+        "op_id": "op-create-1",
+        "description": "Create child node under selected parent",
+        "cli_command": "alfresco node create -i parent-123 -n demo-folder -t cm:folder --format json"
+      }
+    ],
+    "postconditions": [
+      "New child node is created under parent"
+    ],
+    "approval_required": true
+  }
+}

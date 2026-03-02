@@ -1,0 +1,69 @@
+[skill]
+name = "alfresco-agent"
+description = "Resolve -> plan -> apply wrappers for safe Alfresco operations with confidence scoring"
+version = "0.1.0"
+author = "radakichenin"
+tags = ["alfresco", "agentic", "resolve-plan-apply", "safety"]
+
+prompts = [
+  "Always run alfresco_resolve before any write operation.",
+  "Never perform create/update/delete when resolve status is ambiguous, not_found, or out_of_scope.",
+  "Use node_id from resolve response; never write using name-only targets.",
+  "Use alfresco_plan for dry-run plans, then use alfresco_apply only after explicit approval."
+]
+
+[[tools]]
+name = "alfresco_resolve"
+description = "Resolve target file/folder to ranked candidate node IDs with confidence and disambiguation hints"
+kind = "shell"
+command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go resolve --operation {operation} --kind {kind} --name {name} --extension {extension} --site-id {site_id} --root-node-id {root_node_id} --max-depth {max_depth} --expected-parent-path {expected_parent_path} --expected-site-id {expected_site_id} --ancestor-names {ancestor_names} --query-text {query_text} --modified-within-days {modified_within_days} --max-candidates {max_candidates} --require-unique {require_unique}"
+
+[tools.args]
+operation = "Resolve mode (locate_for_upload, locate_for_update, locate_for_create)"
+kind = "Target kind: file or folder"
+name = "Target node name"
+extension = "Expected file extension (e.g. pdf)"
+site_id = "Site identifier"
+root_node_id = "Root node ID to constrain search scope"
+max_depth = "Maximum traversal depth"
+expected_parent_path = "Expected parent folder path hint"
+expected_site_id = "Expected site identifier"
+ancestor_names = "Comma-separated ancestor folder names"
+query_text = "Additional intent text for semantic matching"
+modified_within_days = "Recency hint in days"
+max_candidates = "Maximum number of ranked candidates"
+require_unique = "true/false: require unique high-confidence winner"
+
+[[tools]]
+name = "alfresco_plan"
+description = "Build a dry-run execution plan from a selected node and action"
+kind = "shell"
+command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go plan --resolve-request-id {resolve_request_id} --action {action} --target-node-id {target_node_id} --target-parent-node-id {target_parent_node_id} --local-file-path {local_file_path} --new-name {new_name} --properties-json {properties_json} --dry-run {dry_run} --require-preconditions {require_preconditions} --expected-modified-at {expected_modified_at} --expected-checksum {expected_checksum}"
+
+[tools.args]
+resolve_request_id = "Resolve request identifier"
+action = "Plan action: upload_new_version, update_metadata, create_child"
+target_node_id = "Resolved target node ID"
+target_parent_node_id = "Resolved parent node ID for create_child"
+local_file_path = "Local file path for upload"
+new_name = "New file/folder name"
+properties_json = "JSON object for metadata properties"
+dry_run = "true/false: generate confirmation plan"
+require_preconditions = "true/false: enforce precondition fields"
+expected_modified_at = "Expected modifiedAt timestamp"
+expected_checksum = "Expected checksum"
+
+[[tools]]
+name = "alfresco_apply"
+description = "Execute a previously generated approved plan with idempotency protection"
+kind = "shell"
+command = "go run ./skills/alfresco-agent/cmd/alfresco-agent/main.go apply --plan-id {plan_id} --plan-hash {plan_hash} --idempotency-key {idempotency_key} --approved {approved} --http-timeout {http_timeout} --http-retries {http_retries} --http-retry-wait {http_retry_wait}"
+
+[tools.args]
+plan_id = "Plan identifier"
+plan_hash = "Plan integrity hash"
+idempotency_key = "Idempotency key"
+approved = "true/false explicit approval"
+http_timeout = "Optional HTTP timeout override (e.g. 30s)"
+http_retries = "Optional HTTP retries override"
+http_retry_wait = "Optional HTTP retry wait override (e.g. 500ms)"
