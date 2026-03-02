@@ -10,48 +10,43 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/aborroy/alfresco-cli/internal/approval"
 	"github.com/aborroy/alfresco-cli/internal/audit"
 	"github.com/aborroy/alfresco-cli/internal/executor"
+	"github.com/aborroy/alfresco-cli/internal/state"
 	"github.com/aborroy/alfresco-cli/internal/validation"
 )
 
-type pendingApply struct {
-	Req         validation.ApplyRequest
-	TraceID     string
-	OperationID string
-}
-
 type server struct {
-	exec     executor.Executor
-	approval *approval.Store
-	audit    *audit.Logger
-
-	mu             sync.RWMutex
-	idempotency    map[string]validation.OperationStatusResponse
-	operations     map[string]validation.OperationStatusResponse
-	pendingApplies map[string]pendingApply
+	exec  executor.Executor
+	state *state.Store
+	audit *audit.Logger
 }
 
 func main() {
 	var addr string
 	var auditLogPath string
+	var stateDBPath string
 	var agentBin string
 	flag.StringVar(&addr, "addr", ":8090", "HTTP listen address")
 	flag.StringVar(&auditLogPath, "audit-log", "./audit.log", "Audit log JSONL path")
+	flag.StringVar(&stateDBPath, "state-db", "./state/gateway.db", "SQLite DB path for approvals/idempotency/operations")
 	flag.StringVar(&agentBin, "agent-bin", "/root/.zeroclaw/workspace/skills/alfresco-agent/bin/alfresco-agent", "alfresco-agent binary path")
 	flag.Parse()
 
+	st, err := state.NewSQLite(stateDBPath)
+	if err != nil {
+		log.Fatalf("failed to initialize state db: %v", err)
+	}
+	defer func() {
+		_ = st.Close()
+	}()
+
 	s := &server{
-		exec:           executor.NewCLIExecutor(agentBin),
-		approval:       approval.NewStore(),
-		audit:          audit.NewLogger(auditLogPath),
-		idempotency:    make(map[string]validation.OperationStatusResponse),
-		operations:     make(map[string]validation.OperationStatusResponse),
-		pendingApplies: make(map[string]pendingApply),
+		exec:  executor.NewCLIExecutor(agentBin),
+		state: st,
+		audit: audit.NewLogger(auditLogPath),
 	}
 
 	mux := http.NewServeMux()
@@ -114,7 +109,10 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_idempotency_key", "Idempotency-Key header is required", traceID, nil)
 		return
 	}
-	if prior, ok := s.getIdempotent("plan:" + key); ok {
+	if prior, ok, err := s.state.GetIdempotency("plan:" + key); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed", err.Error(), traceID, nil)
+		return
+	} else if ok {
 		writeJSON(w, http.StatusOK, prior)
 		return
 	}
@@ -136,8 +134,14 @@ func (s *server) handlePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	op := validation.OperationStatusResponse{OperationID: resp.PlanID, Status: "planned", TraceID: traceID, Result: resp}
-	s.storeOperation(op)
-	s.storeIdempotent("plan:"+key, op)
+	if err := s.state.PutOperation(op); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_write_failed", err.Error(), traceID, nil)
+		return
+	}
+	if err := s.state.PutIdempotency("plan:"+key, op); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_write_failed", err.Error(), traceID, nil)
+		return
+	}
 	s.logEvent(traceID, "plan_created", actorFromRequest(r), map[string]any{"plan_id": resp.PlanID})
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -153,7 +157,10 @@ func (s *server) handleApply(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_idempotency_key", "Idempotency-Key header is required", traceID, nil)
 		return
 	}
-	if prior, ok := s.getIdempotent("apply:" + key); ok {
+	if prior, ok, err := s.state.GetIdempotency("apply:" + key); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed", err.Error(), traceID, nil)
+		return
+	} else if ok {
 		writeJSON(w, http.StatusAccepted, prior)
 		return
 	}
@@ -170,18 +177,19 @@ func (s *server) handleApply(w http.ResponseWriter, r *http.Request) {
 
 	approvalID := newUUID()
 	operationID := newUUID()
-	s.approval.Create(approval.Record{
-		ApprovalID:  approvalID,
-		OperationID: operationID,
-		TraceID:     traceID,
-		PlanID:      req.PlanID,
-		PlanHash:    req.PlanHash,
-		RequestedBy: actorFromRequest(r),
-		RequestedAt: time.Now().UTC(),
-	})
-	s.mu.Lock()
-	s.pendingApplies[approvalID] = pendingApply{Req: req, TraceID: traceID, OperationID: operationID}
-	s.mu.Unlock()
+	if err := s.state.CreateApproval(state.ApprovalRecord{
+		ApprovalID:   approvalID,
+		OperationID:  operationID,
+		TraceID:      traceID,
+		PlanID:       req.PlanID,
+		PlanHash:     req.PlanHash,
+		RequestedBy:  actorFromRequest(r),
+		RequestedAt:  time.Now().UTC(),
+		ApplyRequest: req,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_write_failed", err.Error(), traceID, nil)
+		return
+	}
 
 	resp := validation.ApplyResponse{
 		SchemaVersion: validation.SchemaVersion,
@@ -191,8 +199,14 @@ func (s *server) handleApply(w http.ResponseWriter, r *http.Request) {
 		ApprovalID:    approvalID,
 	}
 	op := validation.OperationStatusResponse{OperationID: operationID, Status: "pending_approval", TraceID: traceID, Result: resp}
-	s.storeOperation(op)
-	s.storeIdempotent("apply:"+key, op)
+	if err := s.state.PutOperation(op); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_write_failed", err.Error(), traceID, nil)
+		return
+	}
+	if err := s.state.PutIdempotency("apply:"+key, op); err != nil {
+		writeError(w, http.StatusInternalServerError, "state_write_failed", err.Error(), traceID, nil)
+		return
+	}
 	s.logEvent(traceID, "approval_requested", actorFromRequest(r), map[string]any{"approval_id": approvalID, "operation_id": operationID})
 	writeJSON(w, http.StatusAccepted, resp)
 }
@@ -216,7 +230,7 @@ func (s *server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid_json", err.Error(), traceID, nil)
 		return
 	}
-	rec, err := s.approval.Decide(approvalID, actorFromRequest(r), req.Decision, req.Reason, time.Now().UTC())
+	rec, err := s.state.DecideApproval(approvalID, actorFromRequest(r), req.Decision, req.Reason, time.Now().UTC())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeError(w, http.StatusNotFound, "approval_not_found", err.Error(), traceID, nil)
@@ -227,7 +241,7 @@ func (s *server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.logEvent(rec.TraceID, "approval_decided", actorFromRequest(r), map[string]any{"approval_id": approvalID, "status": rec.Status})
-	if rec.Status == approval.StatusApproved {
+	if rec.Status == "approved" {
 		if err := s.executeApprovedApply(r.Context(), approvalID); err != nil {
 			writeError(w, http.StatusInternalServerError, "apply_execution_failed", err.Error(), traceID, nil)
 			return
@@ -236,39 +250,45 @@ func (s *server) handleApprovalDecision(w http.ResponseWriter, r *http.Request) 
 
 	writeJSON(w, http.StatusOK, validation.ApprovalDecisionResponse{
 		ApprovalID: rec.ApprovalID,
-		Status:     string(rec.Status),
+		Status:     rec.Status,
 		DecidedBy:  rec.DecidedBy,
 		DecidedAt:  rec.DecidedAt,
 	})
 }
 
 func (s *server) executeApprovedApply(ctx context.Context, approvalID string) error {
-	s.mu.RLock()
-	pending, ok := s.pendingApplies[approvalID]
-	s.mu.RUnlock()
-	if !ok {
-		return errors.New("pending apply not found")
-	}
-	pending.Req.Approved = true
-
-	resp, err := s.exec.Apply(ctx, pending.Req)
+	rec, ok, err := s.state.GetApproval(approvalID)
 	if err != nil {
-		s.storeOperation(validation.OperationStatusResponse{
-			OperationID: pending.OperationID,
-			Status:      "failed",
-			TraceID:     pending.TraceID,
-			Result:      map[string]string{"error": err.Error()},
-		})
-		s.logEvent(pending.TraceID, "apply_failed", "system", map[string]any{"approval_id": approvalID, "error": err.Error()})
 		return err
 	}
-	s.storeOperation(validation.OperationStatusResponse{
-		OperationID: pending.OperationID,
+	if !ok {
+		return errors.New("approval not found")
+	}
+	rec.ApplyRequest.Approved = true
+
+	resp, err := s.exec.Apply(ctx, rec.ApplyRequest)
+	if err != nil {
+		op := validation.OperationStatusResponse{
+			OperationID: rec.OperationID,
+			Status:      "failed",
+			TraceID:     rec.TraceID,
+			Result:      map[string]string{"error": err.Error()},
+		}
+		_ = s.state.PutOperation(op)
+		s.logEvent(rec.TraceID, "apply_failed", "system", map[string]any{"approval_id": approvalID, "error": err.Error()})
+		return err
+	}
+
+	op := validation.OperationStatusResponse{
+		OperationID: rec.OperationID,
 		Status:      resp.Status,
-		TraceID:     pending.TraceID,
+		TraceID:     rec.TraceID,
 		Result:      resp,
-	})
-	s.logEvent(pending.TraceID, "apply_completed", "system", map[string]any{"approval_id": approvalID, "execution_id": resp.ExecutionID})
+	}
+	if err := s.state.PutOperation(op); err != nil {
+		return err
+	}
+	s.logEvent(rec.TraceID, "apply_completed", "system", map[string]any{"approval_id": approvalID, "execution_id": resp.ExecutionID})
 	return nil
 }
 
@@ -278,7 +298,11 @@ func (s *server) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/v1/operations/")
-	op, ok := s.getOperation(id)
+	op, ok, err := s.state.GetOperation(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed", err.Error(), traceIDFromContext(r.Context()), nil)
+		return
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "operation_not_found", "operation not found", traceIDFromContext(r.Context()), nil)
 		return
@@ -304,32 +328,6 @@ func (s *server) logEvent(traceID, eventType, actor string, metadata map[string]
 		Actor:      actor,
 		Metadata:   metadata,
 	})
-}
-
-func (s *server) storeIdempotent(key string, status validation.OperationStatusResponse) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.idempotency[key] = status
-}
-
-func (s *server) getIdempotent(key string) (validation.OperationStatusResponse, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	v, ok := s.idempotency[key]
-	return v, ok
-}
-
-func (s *server) storeOperation(status validation.OperationStatusResponse) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.operations[status.OperationID] = status
-}
-
-func (s *server) getOperation(id string) (validation.OperationStatusResponse, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	v, ok := s.operations[id]
-	return v, ok
 }
 
 func decodeJSON(r *http.Request, dst any) error {
