@@ -39,7 +39,7 @@ When specifying parentIds, the group is created associated to those parentIds, n
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(CreateGroupCmdId, _error)
 		}

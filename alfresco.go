@@ -18,7 +18,8 @@ func main() {
 func init() {
 	file, err := os.OpenFile("alfresco.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("unable to open alfresco.log: %v", err)
+		return
 	}
 	log.Default().SetOutput(file)
 }

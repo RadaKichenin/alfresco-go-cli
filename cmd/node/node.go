@@ -25,7 +25,10 @@ var nodeCmd = &cobra.Command{
 	Long: `ACS Repository handles a set of Nodes of different types (folders, files...)
 This command provides the ability to create, update, retrieve and delete ACS Nodes.`,
 	PersistentPostRun: func(command *cobra.Command, args []string) {
-		var format, _ = command.Flags().GetString("output")
+		format, err := cmd.ResolveOutputFormat(command)
+		if err != nil {
+			cmd.ExitWithError("[NODE]", err)
+		}
 		output(responseBody.Bytes(), format)
 	},
 }

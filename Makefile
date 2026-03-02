@@ -4,7 +4,7 @@ LINUX=$(EXECUTABLE)_linux_amd64
 DARWIN=$(EXECUTABLE)_darwin_arm64
 VERSION=$(shell git describe --tags --always --long --dirty)
 
-.PHONY: all test clean docs
+.PHONY: all test test-unit test-contract ci-test clean docs
 
 all: test build docs
 
@@ -28,6 +28,14 @@ $(DARWIN):
 
 test:
 	cd test && ./test_node.sh && ./test_people.sh && ./test_group.sh
+
+test-unit:
+	go test ./cmd ./httpclient ./nativestore ./util
+
+test-contract:
+	go test ./test -run '^TestCLI' -v
+
+ci-test: test-unit test-contract
 
 docs:
 	cd docs/generate && go build generate.go && ./generate

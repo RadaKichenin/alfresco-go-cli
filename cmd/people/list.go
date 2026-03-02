@@ -38,7 +38,7 @@ Incrementing the "skipCount" flag on a loop will allow to retrieve all the child
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(ListPeopleCmdId, _error)
 		}

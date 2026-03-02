@@ -68,7 +68,7 @@ func outputGroup(data []byte, format string) {
 		var group Group
 		json.Unmarshal(data, &group)
 		fmt.Println(group.Entry.ID)
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		var group Group
 		json.Unmarshal(data, &group)
 		if !reflect.DeepEqual(group, Group{}) {
@@ -85,7 +85,7 @@ func outputGroup(data []byte, format string) {
 			w.Flush()
 		}
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 }
 
@@ -95,7 +95,7 @@ func outputGroupList(data []byte, format string, groupList GroupList) {
 		for _, group := range groupList.List.Entries {
 			fmt.Println(group.Entry.ID)
 		}
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		w := tabwriter.NewWriter(os.Stdout, 1, 4, 1, ' ', 0)
 		fmt.Fprintln(w, "ID\tNAME\tIS ADMIN\tTYPE\t")
 		for _, group := range groupList.List.Entries {
@@ -116,7 +116,7 @@ func outputGroupList(data []byte, format string, groupList GroupList) {
 			groupList.List.Pagination.SkipCount,
 			groupList.List.Pagination.MaxItems)
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 
 }

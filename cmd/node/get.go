@@ -31,7 +31,7 @@ func GetNodeProperties(
 		ResponseBodyOutput: responseBody,
 	}
 
-	_error := httpclient.Execute(execution)
+	_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 	if _error != nil {
 		cmd.ExitWithError(GetNodeCmdId, _error)
 	}
@@ -53,7 +53,7 @@ func GetNodeContent(
 		ResponseBodyOutput: &responseBodyContent,
 	}
 
-	_error := httpclient.ExecuteDownloadContent(execution)
+	_error := httpclient.ExecuteDownloadContent(execution, cmd.UsernameParam, cmd.PasswordParam)
 	if _error != nil {
 		cmd.ExitWithError(GetNodeCmdId, _error)
 	}

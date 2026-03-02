@@ -14,7 +14,10 @@ var peopleCmd = &cobra.Command{
 	Short: "Manage people in ACS Repository",
 	Long:  `ACS Repository handles a set of Persons that may be associated to groups, permissions and roles.`,
 	PersistentPostRun: func(command *cobra.Command, args []string) {
-		var format, _ = command.Flags().GetString("output")
+		format, err := cmd.ResolveOutputFormat(command)
+		if err != nil {
+			cmd.ExitWithError("[PEOPLE]", err)
+		}
 		output(responseBody.Bytes(), format)
 	},
 }

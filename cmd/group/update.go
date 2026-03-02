@@ -31,7 +31,7 @@ Add only properties that require modification.`,
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(CreateGroupCmdId, _error)
 		}

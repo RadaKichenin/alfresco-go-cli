@@ -23,7 +23,7 @@ var peopleDeleteCmd = &cobra.Command{
 			Url:                peopleDeleteUrlPath + personId,
 			ResponseBodyOutput: &responseBody,
 		}
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(DeletePeopleCmdId, _error)
 		}

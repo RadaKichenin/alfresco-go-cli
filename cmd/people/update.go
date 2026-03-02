@@ -24,7 +24,9 @@ Add only properties that require modification.`,
 		personUpdate.FirstName = firstName
 		personUpdate.LastName = lastName
 		personUpdate.Email = email
-		PopulatePersonUpdate(properties, &personUpdate)
+		if err := PopulatePersonUpdate(properties, &personUpdate); err != nil {
+			cmd.ExitWithError(UpdatePeopleCmdId, err)
+		}
 		jsonPersonCreate, _ := json.Marshal(personUpdate)
 
 		execution := &httpclient.HttpExecution{
@@ -35,13 +37,13 @@ Add only properties that require modification.`,
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
-			cmd.ExitWithError(CreatePeopleCmdId, _error)
+			cmd.ExitWithError(UpdatePeopleCmdId, _error)
 		}
 	},
 	PostRun: func(command *cobra.Command, args []string) {
-		log.Println(CreatePeopleCmdId, "Person "+personId+" has been updated")
+		log.Println(UpdatePeopleCmdId, "Person "+personId+" has been updated")
 	},
 }
 

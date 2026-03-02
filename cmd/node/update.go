@@ -54,7 +54,7 @@ A local file can be also specified to be replace the content of the new node.`,
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(NodeUpdateCmdId, _error)
 		}
@@ -71,7 +71,7 @@ A local file can be also specified to be replace the content of the new node.`,
 				Url:                nodeUrlPath + node.Entry.ID + "/content",
 				ResponseBodyOutput: &responseBodyContent,
 			}
-			_error = httpclient.ExecuteUploadContent(uploadExecution)
+			_error = httpclient.ExecuteUploadContent(uploadExecution, cmd.UsernameParam, cmd.PasswordParam)
 			if _error != nil {
 				cmd.ExitWithError(CreateNodeCmdId, _error)
 			}

@@ -32,7 +32,9 @@ The person can be created setting only required properties.`,
 		personCreate.LastName = lastName
 		personCreate.Email = email
 		personCreate.Enabled = true
-		PopulatePersonUpdate(properties, &personCreate)
+		if err := PopulatePersonUpdate(properties, &personCreate); err != nil {
+			cmd.ExitWithError(CreatePeopleCmdId, err)
+		}
 		jsonPersonCreate, _ := json.Marshal(personCreate)
 
 		execution := &httpclient.HttpExecution{
@@ -43,7 +45,7 @@ The person can be created setting only required properties.`,
 			ResponseBodyOutput: &responseBody,
 		}
 
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(CreatePeopleCmdId, _error)
 		}

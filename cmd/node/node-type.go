@@ -82,7 +82,7 @@ func outputNode(data []byte, format string) {
 	case string(cmd.Id):
 		json.Unmarshal(data, &node)
 		fmt.Println(node.Entry.ID)
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		json.Unmarshal(data, &node)
 		if !reflect.DeepEqual(node, Node{}) {
 			w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
@@ -91,7 +91,7 @@ func outputNode(data []byte, format string) {
 			w.Flush()
 		}
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 
 }
@@ -103,7 +103,7 @@ func outputNodeList(data []byte, format string, nodeList NodeList) {
 		for _, node := range nodeList.List.Entries {
 			fmt.Println(node.Entry.ID)
 		}
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		w := tabwriter.NewWriter(os.Stdout, 1, 4, 1, ' ', 0)
 		fmt.Fprintln(w, "ID\tNAME\tMODIFIED AT\tUSER\t")
 		for _, node := range nodeList.List.Entries {
@@ -117,7 +117,7 @@ func outputNodeList(data []byte, format string, nodeList NodeList) {
 			nodeList.List.Pagination.SkipCount,
 			nodeList.List.Pagination.MaxItems)
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 
 }

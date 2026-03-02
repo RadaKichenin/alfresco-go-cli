@@ -2,7 +2,6 @@ package nativestore
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/docker/docker-credential-helpers/credentials"
 	"github.com/spf13/viper"
@@ -34,16 +33,10 @@ func Delete(url string) error {
 	return store.Delete(url)
 }
 
-func GetDetails() (string, string, string, bool, bool) {
+func GetConnectionDetails() (string, bool, bool, error) {
 	var storedServer = viper.GetString(UrlLabel)
 	if storedServer == "" {
-		fmt.Println("Use 'alfresco config set' to provide connection details")
-		os.Exit(1)
-	}
-	var username, password, _err = Get(storedServer)
-	if _err != nil {
-		fmt.Println(_err)
-		os.Exit(1)
+		return "", false, false, fmt.Errorf("use 'alfresco config set' to provide connection details")
 	}
 	var protocol = viper.GetString(ProtocolLabel)
 	var tls bool = false
@@ -52,5 +45,5 @@ func GetDetails() (string, string, string, bool, bool) {
 		tls = true
 		insecure = viper.GetBool(InsecureLabel)
 	}
-	return storedServer, username, password, tls, insecure
+	return storedServer, tls, insecure, nil
 }

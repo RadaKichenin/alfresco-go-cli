@@ -47,7 +47,7 @@ func CreateNode(
 		ResponseBodyOutput: responseBody,
 	}
 
-	_error := httpclient.Execute(execution)
+	_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 	if _error != nil {
 		cmd.ExitWithError(CreateNodeCmdId, _error)
 	}
@@ -64,7 +64,7 @@ func CreateNode(
 			Url:                nodeUrlPath + node.Entry.ID + "/content",
 			ResponseBodyOutput: &responseBodyContent,
 		}
-		_error = httpclient.ExecuteUploadContent(uploadExecution)
+		_error = httpclient.ExecuteUploadContent(uploadExecution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(CreateNodeCmdId, _error)
 		}

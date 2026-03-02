@@ -14,7 +14,10 @@ var groupCmd = &cobra.Command{
 	Short: "Manage groups in ACS Repository",
 	Long:  `ACS Repository handles a set of Groups that main contain another groups or persons.`,
 	PersistentPostRun: func(command *cobra.Command, args []string) {
-		var format, _ = command.Flags().GetString("output")
+		format, err := cmd.ResolveOutputFormat(command)
+		if err != nil {
+			cmd.ExitWithError("[GROUP]", err)
+		}
 		output(responseBody.Bytes(), format)
 	},
 }

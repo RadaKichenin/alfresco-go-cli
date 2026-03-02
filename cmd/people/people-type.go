@@ -2,8 +2,8 @@ package people
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -48,9 +48,15 @@ type PersonUpdate struct {
 	Properties                map[string](string) `json:"properties,omitempty"`
 }
 
-func PopulatePersonUpdate(properties []string, personUpdate *PersonUpdate) {
+func PopulatePersonUpdate(properties []string, personUpdate *PersonUpdate) error {
 	for _, property := range properties {
-		pair := strings.Split(property, "=")
+		pair := strings.SplitN(property, "=", 2)
+		if len(pair) != 2 {
+			return errors.New("property format must be key=value")
+		}
+		if strings.HasPrefix(pair[0], "company.") && personUpdate.Company == nil {
+			personUpdate.Company = &Company{}
+		}
 		switch pair[0] {
 		case "description":
 			personUpdate.Description = pair[1]
@@ -85,10 +91,11 @@ func PopulatePersonUpdate(properties []string, personUpdate *PersonUpdate) {
 		case "company.email":
 			personUpdate.Company.Email = pair[1]
 		default:
-			log.Fatal("Property", pair[0], "is not supported")
+			return fmt.Errorf("property %s is not supported", pair[0])
 		}
 	}
 
+	return nil
 }
 
 type Person struct {
@@ -159,7 +166,7 @@ func outputPerson(data []byte, format string) {
 		var person Person
 		json.Unmarshal(data, &person)
 		fmt.Println(person.Entry.ID)
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		var person Person
 		json.Unmarshal(data, &person)
 		if !reflect.DeepEqual(person, Person{}) {
@@ -173,7 +180,7 @@ func outputPerson(data []byte, format string) {
 			w.Flush()
 		}
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 }
 
@@ -183,7 +190,7 @@ func outputPersonList(data []byte, format string, personList PersonList) {
 		for _, person := range personList.List.Entries {
 			fmt.Println(person.Entry.ID)
 		}
-	case string(cmd.Default):
+	case string(cmd.Default), string(cmd.Table):
 		w := tabwriter.NewWriter(os.Stdout, 1, 4, 1, ' ', 0)
 		fmt.Fprintln(w, "ID\tNAME\tIS ADMIN\tEMAIL\t")
 		for _, person := range personList.List.Entries {
@@ -201,7 +208,7 @@ func outputPersonList(data []byte, format string, personList PersonList) {
 			personList.List.Pagination.SkipCount,
 			personList.List.Pagination.MaxItems)
 	default:
-		fmt.Println("Format '" + format + "' is not an option, allowed values are 'id', 'json' or 'default'")
+		fmt.Fprintln(os.Stderr, "Format '"+format+"' is not an option, allowed values are 'id', 'json', 'table' or 'default'")
 	}
 
 }

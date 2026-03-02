@@ -23,7 +23,7 @@ Properties are provided as output of the command.`,
 			Url:                groupsUrlPath + groupId,
 			ResponseBodyOutput: &responseBody,
 		}
-		_error := httpclient.Execute(execution)
+		_error := httpclient.Execute(execution, cmd.UsernameParam, cmd.PasswordParam)
 		if _error != nil {
 			cmd.ExitWithError(GetGroupCmdId, _error)
 		}
