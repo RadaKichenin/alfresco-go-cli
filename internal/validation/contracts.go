@@ -161,6 +161,11 @@ type ApprovalStatusResponse struct {
 	Reason      string    `json:"reason,omitempty"`
 }
 
+type ApprovalListResponse struct {
+	Items []ApprovalStatusResponse `json:"items"`
+	Count int                      `json:"count"`
+}
+
 type OperationStatusResponse struct {
 	OperationID string `json:"operation_id"`
 	Status      string `json:"status"`

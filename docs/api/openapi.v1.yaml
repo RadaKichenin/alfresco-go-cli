@@ -191,6 +191,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/approvals:
+    get:
+      tags: [Approvals]
+      summary: List approvals
+      operationId: listApprovals
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+        - name: requested_by
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Approval list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalListResponse'
+
   /v1/operations/{operation_id}:
     get:
       tags: [Operations]
@@ -491,6 +529,17 @@ components:
         decided_by: { type: string }
         decided_at: { type: string, format: date-time }
         reason: { type: string }
+
+    ApprovalListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalStatusResponse'
+        count: { type: integer, minimum: 0 }
 
     OperationStatusResponse:
       type: object

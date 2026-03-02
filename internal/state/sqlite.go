@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -32,6 +33,13 @@ type ApprovalRecord struct {
 
 type Store struct {
 	db *sql.DB
+}
+
+type ApprovalListFilter struct {
+	Status      string
+	RequestedBy string
+	Limit       int
+	Offset      int
 }
 
 func NewSQLite(path string) (*Store, error) {
@@ -142,6 +150,73 @@ func (s *Store) GetApproval(id string) (ApprovalRecord, bool, error) {
 		_ = json.Unmarshal([]byte(applyReqJSON), &r.ApplyRequest)
 	}
 	return r, true, nil
+}
+
+func (s *Store) ListApprovals(filter ApprovalListFilter) ([]ApprovalRecord, error) {
+	where := []string{"1=1"}
+	args := []any{}
+	if filter.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, filter.Status)
+	}
+	if filter.RequestedBy != "" {
+		where = append(where, "requested_by = ?")
+		args = append(args, filter.RequestedBy)
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	q := fmt.Sprintf(`SELECT approval_id, operation_id, trace_id, plan_id, plan_hash, status, reason,
+		requested_by, requested_at, decided_by, decided_at, decision_note, apply_request_json
+		FROM approvals
+		WHERE %s
+		ORDER BY requested_at DESC
+		LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
+	args = append(args, limit, offset)
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]ApprovalRecord, 0, limit)
+	for rows.Next() {
+		var r ApprovalRecord
+		var requestedAt string
+		var decidedAt sql.NullString
+		var applyReqJSON string
+		var decidedBy sql.NullString
+		var decisionNote sql.NullString
+		if err := rows.Scan(&r.ApprovalID, &r.OperationID, &r.TraceID, &r.PlanID, &r.PlanHash, &r.Status, &r.Reason,
+			&r.RequestedBy, &requestedAt, &decidedBy, &decidedAt, &decisionNote, &applyReqJSON); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339Nano, requestedAt); err == nil {
+			r.RequestedAt = t
+		}
+		if decidedBy.Valid {
+			r.DecidedBy = decidedBy.String
+		}
+		if decidedAt.Valid {
+			if t, err := time.Parse(time.RFC3339Nano, decidedAt.String); err == nil {
+				r.DecidedAt = t
+			}
+		}
+		if decisionNote.Valid {
+			r.DecisionNote = decisionNote.String
+		}
+		if applyReqJSON != "" {
+			_ = json.Unmarshal([]byte(applyReqJSON), &r.ApplyRequest)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DecideApproval(id, actor, decision, reason string, at time.Time) (ApprovalRecord, error) {
