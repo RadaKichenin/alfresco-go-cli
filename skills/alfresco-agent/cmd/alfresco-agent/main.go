@@ -615,6 +615,15 @@ func plan(req PlanRequest) PlanResponse {
 			buildErr = errors.New("selection.target_node_id is required")
 			break
 		}
+		isFile, isFolder, err := detectNodeKind(req.Selection.TargetNodeID)
+		if err != nil {
+			buildErr = fmt.Errorf("failed to validate target_node_id kind: %w", err)
+			break
+		}
+		if !isFile || isFolder {
+			buildErr = errors.New("upload_new_version requires a file/content node id; provided node is not a file")
+			break
+		}
 		if req.Payload.LocalFilePath == "" {
 			buildErr = errors.New("payload.local_file_path is required")
 			break
@@ -884,6 +893,38 @@ func fetchAllChildren(nodeID string) ([]nodeEntry, error) {
 		skip += parsed.List.Pagination.Count
 	}
 	return all, nil
+}
+
+func detectNodeKind(nodeID string) (bool, bool, error) {
+	out, stderr, exit, err := runAlfresco([]string{"node", "get", "-i", nodeID, "--format", "json"})
+	if err != nil || exit != 0 {
+		if err == nil {
+			err = fmt.Errorf("alfresco exit code %d: %s", exit, stderr)
+		}
+		return false, false, err
+	}
+
+	var parsed struct {
+		Entry struct {
+			IsFile   bool `json:"isFile"`
+			IsFolder bool `json:"isFolder"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err == nil {
+		return parsed.Entry.IsFile, parsed.Entry.IsFolder, nil
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return false, false, err
+	}
+	entry, _ := raw["entry"].(map[string]any)
+	return toBool(entry["isFile"]), toBool(entry["isFolder"]), nil
+}
+
+func toBool(v any) bool {
+	b, _ := v.(bool)
+	return b
 }
 
 func buildCandidate(req ResolveRequest, siteID string, path string, entry nodeEntry) ResolveCandidate {

@@ -105,6 +105,7 @@ func buildHandler(s *server) http.Handler {
 	mux.HandleFunc("/v1/resolve", s.handleResolve)
 	mux.HandleFunc("/v1/plan", s.handlePlan)
 	mux.HandleFunc("/v1/apply", s.handleApply)
+	mux.HandleFunc("/v1/approvals/pending/cards", s.handlePendingApprovalCards)
 	mux.HandleFunc("/v1/approvals", s.handleApprovals)
 	mux.HandleFunc("/v1/approvals/", s.handleApprovals)
 	mux.HandleFunc("/v1/operations/", s.handleGetOperation)
@@ -395,6 +396,81 @@ func (s *server) handleGetApproval(w http.ResponseWriter, r *http.Request, appro
 		DecidedAt:   rec.DecidedAt,
 		Reason:      rec.DecisionNote,
 	})
+}
+
+func (s *server) handlePendingApprovalCards(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRoles(w, r, "reader", "approver", "operator") {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "only GET is supported", traceIDFromContext(r.Context()), nil)
+		return
+	}
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	records, err := s.state.ListApprovals(state.ApprovalListFilter{
+		Status: "pending",
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed", err.Error(), traceIDFromContext(r.Context()), nil)
+		return
+	}
+
+	baseURL := "http://" + r.Host
+	if r.TLS != nil {
+		baseURL = "https://" + r.Host
+	}
+	items := make([]validation.ApprovalCardItem, 0, len(records))
+	for _, rec := range records {
+		approveURL := fmt.Sprintf("%s/v1/approvals/%s/decision", baseURL, rec.ApprovalID)
+		card := map[string]any{
+			"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+			"type":    "AdaptiveCard",
+			"version": "1.5",
+			"body": []any{
+				map[string]any{"type": "TextBlock", "size": "Medium", "weight": "Bolder", "text": "Alfresco Apply Approval Pending"},
+				map[string]any{"type": "TextBlock", "wrap": true, "text": "Approval ID: " + rec.ApprovalID},
+				map[string]any{"type": "TextBlock", "wrap": true, "text": "Operation ID: " + rec.OperationID},
+				map[string]any{"type": "TextBlock", "wrap": true, "text": "Requested By: " + rec.RequestedBy},
+				map[string]any{"type": "TextBlock", "wrap": true, "text": "Requested At: " + rec.RequestedAt.Format(time.RFC3339)},
+			},
+			"actions": []any{
+				map[string]any{
+					"type":  "Action.Submit",
+					"title": "Approve",
+					"data": map[string]any{
+						"approval_id": rec.ApprovalID,
+						"decision":    "approve",
+						"reason":      "approved from Teams card",
+						"post_url":    approveURL,
+					},
+				},
+				map[string]any{
+					"type":  "Action.Submit",
+					"title": "Reject",
+					"data": map[string]any{
+						"approval_id": rec.ApprovalID,
+						"decision":    "reject",
+						"reason":      "rejected from Teams card",
+						"post_url":    approveURL,
+					},
+				},
+			},
+		}
+		items = append(items, validation.ApprovalCardItem{
+			ApprovalID:   rec.ApprovalID,
+			OperationID:  rec.OperationID,
+			Status:       rec.Status,
+			AdaptiveCard: card,
+		})
+	}
+	writeJSON(w, http.StatusOK, validation.PendingApprovalCardsResponse{Items: items, Count: len(items)})
 }
 
 func (s *server) executeApprovedApply(ctx context.Context, approvalID string) error {

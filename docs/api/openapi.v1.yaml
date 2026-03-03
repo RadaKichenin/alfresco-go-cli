@@ -229,6 +229,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApprovalListResponse'
 
+  /v1/approvals/pending/cards:
+    get:
+      tags: [Approvals]
+      summary: List pending approvals as Teams Adaptive Cards payloads
+      operationId: listPendingApprovalCards
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Pending approval cards
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingApprovalCardsResponse'
+
   /v1/operations/{operation_id}:
     get:
       tags: [Operations]
@@ -539,6 +566,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ApprovalStatusResponse'
+        count: { type: integer, minimum: 0 }
+
+    ApprovalCardItem:
+      type: object
+      additionalProperties: false
+      required: [approval_id, operation_id, status, adaptive_card]
+      properties:
+        approval_id: { type: string, format: uuid }
+        operation_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected] }
+        adaptive_card:
+          type: object
+          additionalProperties: true
+
+    PendingApprovalCardsResponse:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalCardItem'
         count: { type: integer, minimum: 0 }
 
     OperationStatusResponse:

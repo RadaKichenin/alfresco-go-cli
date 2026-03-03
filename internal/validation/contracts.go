@@ -166,6 +166,18 @@ type ApprovalListResponse struct {
 	Count int                      `json:"count"`
 }
 
+type ApprovalCardItem struct {
+	ApprovalID   string         `json:"approval_id"`
+	OperationID  string         `json:"operation_id"`
+	Status       string         `json:"status"`
+	AdaptiveCard map[string]any `json:"adaptive_card"`
+}
+
+type PendingApprovalCardsResponse struct {
+	Items []ApprovalCardItem `json:"items"`
+	Count int                `json:"count"`
+}
+
 type OperationStatusResponse struct {
 	OperationID string `json:"operation_id"`
 	Status      string `json:"status"`
