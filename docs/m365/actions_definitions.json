@@ -1,0 +1,170 @@
+{
+  "base_url": "https://alfagent.crestsolution.com:7443",
+  "actions": [
+    {
+      "name": "resolve_target",
+      "description": "Resolve a file/folder in Alfresco before writes.",
+      "method": "POST",
+      "path": "/v1/resolve",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "operation", "scope", "target", "policy"],
+        "properties": {
+          "schema_version": {"type": "string", "enum": ["1.0"]},
+          "operation": {"type": "string", "enum": ["locate_for_update", "locate_for_upload", "locate_for_create"]},
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["site_id", "root_node_id", "max_depth"],
+            "properties": {
+              "site_id": {"type": "string"},
+              "root_node_id": {"type": "string", "format": "uuid"},
+              "max_depth": {"type": "integer", "minimum": 1, "maximum": 10}
+            }
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name"],
+            "properties": {
+              "kind": {"type": "string", "enum": ["file", "folder"]},
+              "name": {"type": "string"},
+              "extension": {"type": "string"},
+              "expected_parent_path": {"type": "string"},
+              "expected_site_id": {"type": "string"},
+              "ancestor_names": {"type": "array", "items": {"type": "string"}},
+              "query_text": {"type": "string"},
+              "modified_within_days": {"type": "integer", "minimum": 0}
+            }
+          },
+          "policy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["max_candidates", "require_unique"],
+            "properties": {
+              "max_candidates": {"type": "integer", "minimum": 1, "maximum": 20},
+              "require_unique": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "create_plan",
+      "description": "Create dry-run plan for upload_new_version, update_metadata, or create_child.",
+      "method": "POST",
+      "path": "/v1/plan",
+      "required_headers": ["Idempotency-Key"],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "resolve_request_id", "action", "selection", "payload", "safety"],
+        "properties": {
+          "schema_version": {"type": "string", "enum": ["1.0"]},
+          "resolve_request_id": {"type": "string"},
+          "action": {"type": "string", "enum": ["upload_new_version", "update_metadata", "create_child"]},
+          "selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "target_node_id": {"type": "string", "format": "uuid"},
+              "target_parent_node_id": {"type": "string", "format": "uuid"}
+            }
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "local_file_path": {"type": "string"},
+              "new_name": {"type": "string"},
+              "properties": {"type": "object", "additionalProperties": {"type": "string"}}
+            }
+          },
+          "safety": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dry_run", "require_preconditions"],
+            "properties": {
+              "dry_run": {"type": "boolean"},
+              "require_preconditions": {"type": "boolean"},
+              "expected_modified_at": {"type": "string"},
+              "expected_checksum": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "request_apply",
+      "description": "Request apply execution; returns pending approval.",
+      "method": "POST",
+      "path": "/v1/apply",
+      "required_headers": ["Idempotency-Key"],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "plan_id", "plan_hash"],
+        "properties": {
+          "schema_version": {"type": "string", "enum": ["1.0"]},
+          "plan_id": {"type": "string"},
+          "plan_hash": {"type": "string"}
+        }
+      }
+    },
+    {"name": "list_approvals", "description": "List approvals", "method": "GET", "path": "/v1/approvals"},
+    {
+      "name": "get_approval",
+      "description": "Get approval by id",
+      "method": "GET",
+      "path": "/v1/approvals/{approval_id}",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["approval_id"],
+        "properties": {"approval_id": {"type": "string", "format": "uuid"}}
+      }
+    },
+    {
+      "name": "decide_approval",
+      "description": "Approve or reject a pending request",
+      "method": "POST",
+      "path": "/v1/approvals/{approval_id}/decision",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["approval_id", "decision"],
+        "properties": {
+          "approval_id": {"type": "string", "format": "uuid"},
+          "decision": {"type": "string", "enum": ["approve", "reject"]},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    {"name": "list_pending_approval_cards", "description": "Get pending approvals as Teams adaptive cards", "method": "GET", "path": "/v1/approvals/pending/cards"},
+    {
+      "name": "get_operation_status",
+      "description": "Get operation status/result",
+      "method": "GET",
+      "path": "/v1/operations/{operation_id}",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_id"],
+        "properties": {"operation_id": {"type": "string", "format": "uuid"}}
+      }
+    },
+    {
+      "name": "get_audit_trace",
+      "description": "Get audit timeline by trace id",
+      "method": "GET",
+      "path": "/v1/audit/{trace_id}",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trace_id"],
+        "properties": {"trace_id": {"type": "string"}}
+      }
+    }
+  ]
+}
