@@ -1,0 +1,37 @@
+{
+  "package_version": "1.0.0",
+  "agent": {
+    "name": "Alfresco Contract Assistant",
+    "description": "Safely resolve, plan, and request/approve Alfresco document updates.",
+    "path": "M365 Agent",
+    "auth_model": "service_account",
+    "base_url": "https://alfagent.crestsolution.com:7443",
+    "entra": {
+      "tenant_id": "89a93711-19eb-4ef4-8131-439d503d08c7",
+      "audience": "715bd2b9-a0e9-4080-8f48-fdff0ecd3253",
+      "required_roles": ["Operator", "Approver", "Reader"]
+    }
+  },
+  "import_assets": {
+    "openapi": "openapi.import.yaml",
+    "instructions_markdown": "../agent_instructions.md",
+    "action_definitions": "../actions_definitions.json",
+    "demo_script": "../demo_script.md"
+  },
+  "behavior_rules": [
+    "Always call resolve_target before any write path.",
+    "Do not proceed if resolve status is ambiguous, not_found, or out_of_scope.",
+    "Use create_plan before request_apply.",
+    "Never auto-approve; decide_approval must be explicit.",
+    "For folder uploads, use create_child with target_parent_node_id.",
+    "After approval, always call get_operation_status and summarize outcome."
+  ],
+  "demo_prompts": [
+    "Find target contract and prepare update plan for test2.pdf in contract-management.",
+    "Request apply for this plan.",
+    "Show pending approvals.",
+    "Approve approval <id>.",
+    "Show operation status and final result.",
+    "Show audit trace for this operation."
+  ]
+}
