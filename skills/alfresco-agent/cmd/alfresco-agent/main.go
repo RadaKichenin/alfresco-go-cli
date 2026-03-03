@@ -136,7 +136,7 @@ type PlanOperation struct {
 	OpID        string   `json:"op_id"`
 	Description string   `json:"description"`
 	CLICommand  string   `json:"cli_command"`
-	Args        []string `json:"-"`
+	Args        []string `json:"args,omitempty"`
 }
 
 type storedPlan struct {
@@ -791,6 +791,17 @@ func apply(req ApplyRequest) ApplyResponse {
 
 	for _, op := range plan.Operations {
 		args := append([]string{}, op.Args...)
+		if len(args) == 0 {
+			resp.Results = append(resp.Results, ApplyResult{
+				OpID:     op.OpID,
+				ExitCode: 2,
+				Stdout:   "",
+				Stderr:   "plan operation args are empty; refusing execution to avoid false-positive help output",
+			})
+			resp.Status = "failed"
+			resp.Error = "operation failed: " + op.OpID
+			return resp
+		}
 		if req.Runtime.HTTPTimeout != "" {
 			args = append(args, "--http-timeout", req.Runtime.HTTPTimeout)
 		}
@@ -827,8 +838,14 @@ func apply(req ApplyRequest) ApplyResponse {
 			Stdout:   strings.TrimSpace(stdout.String()),
 			Stderr:   strings.TrimSpace(stderr.String()),
 		}
+		if exitCode == 0 && looksLikeTopLevelHelp(result.Stdout) {
+			result.ExitCode = 2
+			if result.Stderr == "" {
+				result.Stderr = "unexpected top-level alfresco help output; refusing to mark operation as succeeded"
+			}
+		}
 		resp.Results = append(resp.Results, result)
-		if exitCode != 0 {
+		if result.ExitCode != 0 {
 			resp.Status = "failed"
 			resp.Error = "operation failed: " + op.OpID
 			return resp
@@ -1279,6 +1296,16 @@ func shellJoin(parts []string) string {
 		}
 	}
 	return strings.Join(escaped, " ")
+}
+
+func looksLikeTopLevelHelp(stdout string) bool {
+	out := strings.TrimSpace(stdout)
+	if out == "" {
+		return false
+	}
+	return strings.Contains(out, "Alfresco CLI provides access to Alfresco REST API services via command line.") &&
+		strings.Contains(out, "Usage:\n  alfresco [command]") &&
+		strings.Contains(out, "Available Commands:")
 }
 
 func splitCSV(value string) []string {
