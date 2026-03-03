@@ -811,6 +811,7 @@ func apply(req ApplyRequest) ApplyResponse {
 		if req.Runtime.HTTPRetryWait != "" {
 			args = append(args, "--http-retry-wait", req.Runtime.HTTPRetryWait)
 		}
+		args = withCredentials(args)
 
 		cmd := exec.Command(alfrescoBinary(), args...)
 		var stdout bytes.Buffer
