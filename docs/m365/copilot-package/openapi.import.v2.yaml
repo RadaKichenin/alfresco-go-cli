@@ -1,0 +1,307 @@
+swagger: '2.0'
+info:
+  title: Alfresco Agent Gateway - Copilot Import API (v2)
+  version: '1.0.0'
+host: alfagent.crestsolution.com:7443
+schemes:
+  - https
+basePath: /
+consumes:
+  - application/json
+produces:
+  - application/json
+
+# NOTE:
+# Keep auth outside this spec in Copilot connection settings.
+# APIM import in this path rejects OAS3 bearer http security schemes.
+
+paths:
+  /v1/resolve:
+    post:
+      operationId: resolve_target
+      summary: Resolve target node(s)
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ResolveRequest'
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/plan:
+    post:
+      operationId: create_plan
+      summary: Create execution plan
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          type: string
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/PlanRequest'
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/apply:
+    post:
+      operationId: request_apply
+      summary: Request apply (approval gated)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          type: string
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ApplyRequest'
+      responses:
+        '202':
+          description: Pending approval
+          schema:
+            type: object
+
+  /v1/approvals:
+    get:
+      operationId: list_approvals
+      summary: List approvals
+      parameters:
+        - name: status
+          in: query
+          required: false
+          type: string
+          enum: [pending, approved, rejected]
+        - name: requested_by
+          in: query
+          required: false
+          type: string
+        - name: limit
+          in: query
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 200
+        - name: offset
+          in: query
+          required: false
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/approvals/{approval_id}:
+    get:
+      operationId: get_approval
+      summary: Get approval by id
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          type: string
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/approvals/{approval_id}/decision:
+    post:
+      operationId: decide_approval
+      summary: Decide approval (approve/reject)
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          type: string
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/approvals/pending/cards:
+    get:
+      operationId: list_pending_approval_cards
+      summary: List pending approvals as adaptive card payloads
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 50
+        - name: offset
+          in: query
+          required: false
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/operations/{operation_id}:
+    get:
+      operationId: get_operation_status
+      summary: Get operation status
+      parameters:
+        - name: operation_id
+          in: path
+          required: true
+          type: string
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+  /v1/audit/{trace_id}:
+    get:
+      operationId: get_audit_trace
+      summary: Get audit timeline by trace id
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          type: string
+      responses:
+        '200':
+          description: OK
+          schema:
+            type: object
+
+definitions:
+  ResolveRequest:
+    type: object
+    required: [schema_version, operation, scope, target, policy]
+    properties:
+      schema_version:
+        type: string
+        enum: ['1.0']
+      operation:
+        type: string
+        enum: [locate_for_update, locate_for_upload, locate_for_create]
+      scope:
+        type: object
+        required: [site_id, root_node_id, max_depth]
+        properties:
+          site_id:
+            type: string
+          root_node_id:
+            type: string
+          max_depth:
+            type: integer
+      target:
+        type: object
+        required: [kind, name]
+        properties:
+          kind:
+            type: string
+            enum: [file, folder]
+          name:
+            type: string
+          extension:
+            type: string
+          expected_parent_path:
+            type: string
+          expected_site_id:
+            type: string
+          ancestor_names:
+            type: array
+            items:
+              type: string
+          query_text:
+            type: string
+          modified_within_days:
+            type: integer
+      policy:
+        type: object
+        required: [max_candidates, require_unique]
+        properties:
+          max_candidates:
+            type: integer
+          require_unique:
+            type: boolean
+
+  PlanRequest:
+    type: object
+    required: [schema_version, resolve_request_id, action, selection, payload, safety]
+    properties:
+      schema_version:
+        type: string
+        enum: ['1.0']
+      resolve_request_id:
+        type: string
+      action:
+        type: string
+        enum: [upload_new_version, update_metadata, create_child]
+      selection:
+        type: object
+        properties:
+          target_node_id:
+            type: string
+          target_parent_node_id:
+            type: string
+      payload:
+        type: object
+        properties:
+          local_file_path:
+            type: string
+          new_name:
+            type: string
+          properties:
+            type: object
+      safety:
+        type: object
+        required: [dry_run, require_preconditions]
+        properties:
+          dry_run:
+            type: boolean
+          require_preconditions:
+            type: boolean
+          expected_modified_at:
+            type: string
+          expected_checksum:
+            type: string
+
+  ApplyRequest:
+    type: object
+    required: [schema_version, plan_id, plan_hash]
+    properties:
+      schema_version:
+        type: string
+        enum: ['1.0']
+      plan_id:
+        type: string
+      plan_hash:
+        type: string
+
+  ApprovalDecisionRequest:
+    type: object
+    required: [decision]
+    properties:
+      decision:
+        type: string
+        enum: [approve, reject]
+      reason:
+        type: string

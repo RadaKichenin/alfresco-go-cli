@@ -37,12 +37,3 @@ zip -r copilot-agent-import.zip copilot-package agent_instructions.md actions_de
 ```
 
 This zip is the handoff package for demo setup.
-
-## APIM/OAS compatibility fallback
-
-If import fails with OAS3 `securityDefinitions` or `oneOf` validation errors, import:
-
-- `openapi.import.v2.yaml`
-
-This Swagger 2.0 variant is intentionally simplified for APIM compatibility.
-Configure auth in Copilot connection settings (do not rely on in-spec bearer scheme).
